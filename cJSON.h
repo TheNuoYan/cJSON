@@ -96,7 +96,6 @@ then using the CJSON_API_VISIBILITY flag to "export" the same symbols the way CJ
 #define cJSON_Object (1 << 6)
 #define cJSON_Raw    (1 << 7) /* raw json */
 /*--------------------------------------------------------------------------------------------------------------------------------
-/* 
  我的解读：
  * type 字段取值（位标志）：
  *   cJSON_Invalid = 0     无效
@@ -108,7 +107,7 @@ then using the CJSON_API_VISIBILITY flag to "export" the same symbols the way CJ
  *   cJSON_Array   = 0x20  数组
  *   cJSON_Object  = 0x40  对象
  *   cJSON_Raw     = 0x80  原始字符串
- */
+
 --------------------------------------------------------------------------------------------------------------------------------*/
 
 #define cJSON_IsReference 256
