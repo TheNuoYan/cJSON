@@ -208,7 +208,20 @@ static unsigned char* cJSON_strdup(const unsigned char* string, const internal_h
 
     return copy;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_InitHooks：设置全局内存管理函数
+ * 
+ * 我的理解：
+ *   这个函数用来替换 cJSON 内部的内存分配函数。
+ * 
+ *   如果传 NULL：恢复成系统的 malloc/free/realloc
+ *   如果传非空：用用户自定义的 malloc_fn 和 free_fn
+ * 
+ *   这里有个细节：reallocate 只有 malloc 和 free 都是系统默认的才会设置，
+ *   因为用户自定义的内存分配器不一定支持 realloc。
+ * 
+ *   这个设计挺实在的，宁可不用 realloc，也不能让程序崩。
+ ------------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(void) cJSON_InitHooks(cJSON_Hooks* hooks)
 {
     if (hooks == NULL)
@@ -2079,7 +2092,22 @@ static void* cast_away_const(const void* string)
     #pragma GCC diagnostic pop
 #endif
 
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * add_item_to_object：把节点添加到对象
+ * 
+ * 我的理解：
+ *   这个函数主要做三件事：
+ *     1. 处理键名：常量就直接用，变量就拷贝一份
+ *     2. 释放旧的键名（如果有）
+ *     3. 把节点挂到对象的 child 链表上（调用 add_item_to_array）
+ * 
+ *   constant_key 参数：
+ *     - true：键名是常量字符串，不拷贝，直接用
+ *     - false：键名是变量，拷贝一份再存
+ * 
+ *   类型上的 cJSON_StringIsConst 标记用来记住这个键名是不是常量，
+ *   以后释放节点时，如果是常量就不释放它。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool add_item_to_object(cJSON * const object, const char * const string, cJSON * const item, const internal_hooks * const hooks, const cJSON_bool constant_key)
 {
     char *new_key = NULL;
@@ -2116,7 +2144,18 @@ static cJSON_bool add_item_to_object(cJSON * const object, const char * const st
 
     return add_item_to_array(object, item);
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * 引用添加函数
+ * 
+ * 我的理解：
+ *   AddItemToObject：添加真正的节点（节点归对象所有）
+ *   AddItemReferenceToObject：添加引用节点（节点不归对象所有）
+ * 
+ *   引用节点是个“替身”，它指向真正的节点。
+ *   删除对象时，引用节点被删，但真正的节点还在。
+ * 
+ *   用处：同一个数据需要在 JSON 里出现多次时，避免重复拷贝。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON_bool) cJSON_AddItemToObject(cJSON *object, const char *string, cJSON *item)
 {
     return add_item_to_object(object, string, item, &global_hooks, false);
@@ -2147,7 +2186,21 @@ CJSON_PUBLIC(cJSON_bool) cJSON_AddItemReferenceToObject(cJSON *object, const cha
 
     return add_item_to_object(object, string, create_reference(item, &global_hooks), &global_hooks, false);
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * Add 家族函数
+ * 
+ * 我的理解：
+ *   这是一组“快捷添加函数”，每种 JSON 类型都有一个对应的 Add 函数。
+ *   它们都遵循同样的模式：
+ *     1. 用 cJSON_CreateXxx 创建节点
+ *     2. 用 add_item_to_object 挂到对象上
+ *     3. 成功返回节点，失败自动清理
+ * 
+ *   这样设计的好处：
+ *     - 用户不用手动处理创建、添加、错误检查
+ *     - 代码统一，容易维护
+ *     - 不容易漏掉错误处理
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON*) cJSON_AddNullToObject(cJSON * const object, const char * const name)
 {
     cJSON *null = cJSON_CreateNull();
@@ -2243,6 +2296,19 @@ CJSON_PUBLIC(cJSON*) cJSON_AddObjectToObject(cJSON * const object, const char * 
     cJSON_Delete(object_item);
     return NULL;
 }
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_AddArrayToObject：向对象添加一个空数组
+ * 
+ * 我的理解：
+ *   这个函数分两步：
+ *     1. 创建空数组节点（cJSON_CreateArray）
+ *     2. 把数组节点添加到对象（add_item_to_object）
+ * 
+ *   添加成功后返回数组节点指针，之后可以用 cJSON_AddItemToArray
+ *   往这个数组里加元素。
+ * 
+ *   如果中间失败（比如内存不够），会自动清理并返回 NULL。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 
 CJSON_PUBLIC(cJSON*) cJSON_AddArrayToObject(cJSON * const object, const char * const name)
 {
