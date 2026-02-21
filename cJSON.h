@@ -79,6 +79,9 @@ then using the CJSON_API_VISIBILITY flag to "export" the same symbols the way CJ
 #endif
 
 /* project version */
+/*--------------------------------------------------------------------------------------------------------------------------------
+版本号相关内容
+--------------------------------------------------------------------------------------------------------------------------------*/
 #define CJSON_VERSION_MAJOR 1
 #define CJSON_VERSION_MINOR 7
 #define CJSON_VERSION_PATCH 19
@@ -144,7 +147,7 @@ typedef struct cJSON
     /* The item's name string, if this item is the child of, or is in the list of subitems of an object. */
     char *string;
 /*--------------------------------------------------------------------------------------------------------------------------------
-我的理解：valuestring、valueint和valuedouble这三个值是JSON中可能会出现的三种值的类型，当我们遍历链表中的每个节点时，节点对应的值就存在这三种变量的其中一个中
+我的理解：valuestring、valueint和valuedouble这三个值是JSON中可能会出现的三种值的类型，当我们遍历链表中的每个节点时，节点对应的值就存在这三种变量的其中一个
 --------------------------------------------------------------------------------------------------------------------------------*/
 
 } cJSON;
@@ -160,8 +163,14 @@ typedef struct cJSON_Hooks
       void *(CJSON_CDECL *malloc_fn)(size_t sz);
       void (CJSON_CDECL *free_fn)(void *ptr);
 } cJSON_Hooks;
+/*--------------------------------------------------------------------------------------------------------------------------------
+我的理解：cJSON_Hooks 让你可以自定义内存分配函数，替换系统的 malloc/free，用于嵌入式、调试或特殊环境。
+--------------------------------------------------------------------------------------------------------------------------------*/
 
 typedef int cJSON_bool;
+/*--------------------------------------------------------------------------------------------------------------------------------
+我的理解：这里为了用int类型代表bool类型，即1表示真，0表示假
+--------------------------------------------------------------------------------------------------------------------------------*/
 
 /* Limits how deeply nested arrays/objects can be before cJSON rejects to parse them.
  * This is to prevent stack overflows. */
@@ -177,9 +186,15 @@ typedef int cJSON_bool;
 
 /* returns the version of cJSON as a string */
 CJSON_PUBLIC(const char*) cJSON_Version(void);
+/*--------------------------------------------------------------------------------------------------------------------------------
+我的解读：获取版本号函数
+--------------------------------------------------------------------------------------------------------------------------------*/
 
 /* Supply malloc, realloc and free functions to cJSON */
 CJSON_PUBLIC(void) cJSON_InitHooks(cJSON_Hooks* hooks);
+/*--------------------------------------------------------------------------------------------------------------------------------
+管理用户自定义的内存函数，注册给cJSON，后面的内存管理都可以调用用户自己设置的内存函数
+--------------------------------------------------------------------------------------------------------------------------------*/
 
 /* Memory Management: the caller is always responsible to free the results from all variants of cJSON_Parse (with cJSON_Delete) and cJSON_Print (with stdlib free, cJSON_Hooks.free_fn, or cJSON_free as appropriate). The exception is cJSON_PrintPreallocated, where the caller has full responsibility of the buffer. */
 /* Supply a block of JSON, and this returns a cJSON object you can interrogate. */
