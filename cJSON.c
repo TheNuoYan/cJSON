@@ -117,6 +117,9 @@ CJSON_PUBLIC(double) cJSON_GetNumberValue(const cJSON * const item)
 }
 
 /* This is a safeguard to prevent copy-pasters from using incompatible C and header files */
+/*-------------------------------------------------------------------------------------------------------------------------------
+cJSON版本获取函数，使用cJSON.h文件中定义好的三个版本号打印
+-------------------------------------------------------------------------------------------------------------------------------*/
 #if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 19)
     #error cJSON.h and cJSON.c have different versions. Make sure that both have the same.
 #endif
@@ -238,6 +241,16 @@ CJSON_PUBLIC(void) cJSON_InitHooks(cJSON_Hooks* hooks)
 }
 
 /* Internal constructor. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_New_Item：新建一个 cJSON 节点
+ * 
+ * 我的理解：
+ *   先分配内存，再把这块内存全部清零。
+ *   清零是为了让里面的指针默认指向 NULL，避免野指针。
+ * 
+ * 参数 hooks：内存分配函数
+ * 返回值：新节点的地址，分配失败返回 NULL
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON *cJSON_New_Item(const internal_hooks * const hooks)
 {
     cJSON* node = (cJSON*)hooks->allocate(sizeof(cJSON));
@@ -1361,6 +1374,9 @@ CJSON_PUBLIC(cJSON_bool) cJSON_PrintPreallocated(cJSON *item, char *buffer, cons
 
 /* Parser core - when encountering text, process appropriately. */
 static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buffer)
+/*-------------------------------------------------------------------------------------------------------------------------------
+我的解读：parse_value函数，返回值为cJSON_bool类型（根据前文可知其本质为int类型）
+-------------------------------------------------------------------------------------------------------------------------------*/
 {
     if ((input_buffer == NULL) || (input_buffer->content == NULL))
     {
@@ -2591,7 +2607,18 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateArray(void)
     return item;
 }
 
-CJSON_PUBLIC(cJSON *) cJSON_CreateObject(void)
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateObject：创建一个空的 JSON 对象节点
+ * 
+ * 我的理解：
+ *   1. 调用 cJSON_New_Item 分配内存（内部用 malloc 或用户自定义的 hooks）
+ *   2. 设置节点类型为 cJSON_Object（type = 0x40）
+ *   3. 此时节点还没有子节点（child = NULL），也没有键名（string = NULL）
+ *   4. 后续需要用 AddItemToObject 添加键值对
+ * 
+ * 返回值：新创建的对象节点指针，如果内存分配失败则返回 NULL
+ *-----------------------------------------------------------------------------------------------------------------------------*/
+CJSON_PUBLIC(cJSON *) cJSON_CreateObject (void)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
     if (item)
