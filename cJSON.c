@@ -118,6 +118,7 @@ CJSON_PUBLIC(double) cJSON_GetNumberValue(const cJSON * const item)
 
 /* This is a safeguard to prevent copy-pasters from using incompatible C and header files */
 /*-------------------------------------------------------------------------------------------------------------------------------
+我的解读：
 cJSON版本获取函数，使用cJSON.h文件中定义好的三个版本号打印
 -------------------------------------------------------------------------------------------------------------------------------*/
 #if (CJSON_VERSION_MAJOR != 1) || (CJSON_VERSION_MINOR != 7) || (CJSON_VERSION_PATCH != 19)
@@ -2525,6 +2526,16 @@ CJSON_PUBLIC(cJSON_bool) cJSON_ReplaceItemInObjectCaseSensitive(cJSON *object, c
 }
 
 /* Create basic types: */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateNull：创建一个 null 节点
+ * 
+ * 我的理解：
+ *   1. 调用 cJSON_New_Item 分配内存
+ *   2. 把节点类型设为 cJSON_NULL
+ *   3. 其他字段都是 0 或 NULL（因为 New_Item 里用 memset 清零了）
+ * 
+ * 返回：新节点的指针，如果内存分配失败就返回 NULL
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateNull(void)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2535,7 +2546,12 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateNull(void)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateTrue：创建一个 true 节点
+ * 
+ * 我的理解：
+ *   和 CreateNull 一样，只是类型设成了 cJSON_True
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateTrue(void)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2547,6 +2563,12 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateTrue(void)
     return item;
 }
 
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateFalse：创建一个 false 节点
+ * 
+ * 我的理解：
+ *   和 CreateNull 一样，只是类型设成了 cJSON_False
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateFalse(void)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2557,7 +2579,17 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateFalse(void)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateBool：根据参数创建 true 或 false 节点
+ * 
+ * 我的理解：
+ *   1. 先分配内存
+ *   2. 如果 boolean 为真，设 type = cJSON_True
+ *      如果为假，设 type = cJSON_False
+ * 
+ * 参数 boolean：cJSON_bool 类型，true 或 false
+ * 返回：对应的 true/false 节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateBool(cJSON_bool boolean)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
