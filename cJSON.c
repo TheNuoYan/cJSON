@@ -312,7 +312,20 @@ static unsigned char get_decimal_point(void)
     return '.';
 #endif
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * parse_buffer：解析器的“进度条”和“工作台”
+ * 
+ * 我的理解：
+ *   content : 整个 JSON 字符串
+ *   length  : 总长度（防越界）
+ *   offset  : 当前读到哪了（所有解析函数共享）
+ *   depth   : 当前嵌套深度（防栈溢出）
+ *   hooks   : 内存分配函数（创建节点用）
+ * 
+ * 所有解析函数都操作同一个 buffer，
+ * 每解析完一部分，就把 offset 往后移，
+ * 这样下一个函数就知道从哪继续读。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 typedef struct
 {
     const unsigned char *content;
@@ -1679,30 +1692,51 @@ static cJSON_bool print_array(const cJSON * const item, printbuffer * const outp
 }
 
 /* Build an object from the text. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * parse_object：解析 JSON 对象 {}
+ *
+ * 参数：
+ *   item         ：当前正在构建的对象节点
+ *   input_buffer ：解析进度条（记录读到哪了）
+ *
+ * 返回：解析成功返回 true，失败返回 false
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool parse_object(cJSON * const item, parse_buffer * const input_buffer)
 {
     cJSON *head = NULL; /* linked list head */
-    cJSON *current_item = NULL;
-
+    /* 链表头节点（第一个键值对） */
+    cJSON *current_item = NULL;/* 当前正在处理的节点 */
+     /*--------------------------------------------------------------
+     * 1. 深度检查：防止 JSON 嵌套太深导致栈溢出
+     *--------------------------------------------------------------*/
     if (input_buffer->depth >= CJSON_NESTING_LIMIT)
     {
         return false; /* to deeply nested */
+        /* 嵌套太深，解析失败 */
     }
-    input_buffer->depth++;
-
+    input_buffer->depth++;/* 进入一层，深度 +1 */
+    /*--------------------------------------------------------------
+     * 2. 检查第一个字符是不是 '{'
+     *--------------------------------------------------------------*/
     if (cannot_access_at_index(input_buffer, 0) || (buffer_at_offset(input_buffer)[0] != '{'))
     {
         goto fail; /* not an object */
+        /* 不是对象，跳转到失败处理 */
     }
 
     input_buffer->offset++;
     buffer_skip_whitespace(input_buffer);
+    /*--------------------------------------------------------------
+     * 3. 处理空对象 {} 的情况
+     *--------------------------------------------------------------*/
     if (can_access_at_index(input_buffer, 0) && (buffer_at_offset(input_buffer)[0] == '}'))
     {
         goto success; /* empty object */
+        /* 空对象，直接成功 */
     }
 
     /* check if we skipped to the end of the buffer */
+     /* 检查是否已经读到末尾（不应该发生） */
     if (cannot_access_at_index(input_buffer, 0))
     {
         input_buffer->offset--;
@@ -1710,11 +1744,17 @@ static cJSON_bool parse_object(cJSON * const item, parse_buffer * const input_bu
     }
 
     /* step back to character in front of the first element */
+    /* 回退一个字符，准备开始循环解析键值对 */
     input_buffer->offset--;
     /* loop through the comma separated array elements */
+    /*--------------------------------------------------------------
+     * 4. 循环解析键值对（直到遇到 '}'）
+     *--------------------------------------------------------------*/
     do
     {
         /* allocate next item */
+        /* 4.1 创建一个新节点 */
+        
         cJSON *new_item = cJSON_New_Item(&(input_buffer->hooks));
         if (new_item == NULL)
         {
@@ -1722,43 +1762,50 @@ static cJSON_bool parse_object(cJSON * const item, parse_buffer * const input_bu
         }
 
         /* attach next item to list */
+        /* 4.2 把新节点挂到链表上 */
         if (head == NULL)
         {
             /* start the linked list */
+            /* 第一个节点：作为链表头 */
             current_item = head = new_item;
         }
         else
         {
             /* add to the end and advance */
+            /* 后续节点：加到链表末尾 */
             current_item->next = new_item;
             new_item->prev = current_item;
             current_item = new_item;
         }
-
+	/* 检查逗号后面还有没有内容 */
         if (cannot_access_at_index(input_buffer, 1))
         {
             goto fail; /* nothing comes after the comma */
         }
 
         /* parse the name of the child */
-        input_buffer->offset++;
+        /* 4.3 解析键名（字符串） */
+        input_buffer->offset++;/* 跳过逗号或 '{' */
         buffer_skip_whitespace(input_buffer);
         if (!parse_string(current_item, input_buffer))
         {
             goto fail; /* failed to parse name */
         }
         buffer_skip_whitespace(input_buffer);
-
+	/* 4.4 键名处理：parse_string 解析出来的值在 valuestring 里，
+         *    但我们需要的键名要放到 string 字段，所以交换一下 */
         /* swap valuestring and string, because we parsed the name */
         current_item->string = current_item->valuestring;
         current_item->valuestring = NULL;
-
+	/* 检查后面是不是 ':' */
         if (cannot_access_at_index(input_buffer, 0) || (buffer_at_offset(input_buffer)[0] != ':'))
         {
             goto fail; /* invalid object */
+            /* 缺少冒号 */
         }
 
         /* parse the value */
+        /* 4.5 解析值（调用 parse_value 递归） */
         input_buffer->offset++;
         buffer_skip_whitespace(input_buffer);
         if (!parse_value(current_item, input_buffer))
@@ -1766,27 +1813,34 @@ static cJSON_bool parse_object(cJSON * const item, parse_buffer * const input_bu
             goto fail; /* failed to parse value */
         }
         buffer_skip_whitespace(input_buffer);
+         /* 4.6 检查后面是逗号还是 '}' */
     }
     while (can_access_at_index(input_buffer, 0) && (buffer_at_offset(input_buffer)[0] == ','));
-
+    /*--------------------------------------------------------------
+     * 5. 检查最后是不是 '}'
+     *--------------------------------------------------------------*/
     if (cannot_access_at_index(input_buffer, 0) || (buffer_at_offset(input_buffer)[0] != '}'))
     {
         goto fail; /* expected end of object */
     }
-
+/*--------------------------------------------------------------
+ * 6. 成功处理
+ *--------------------------------------------------------------*/
 success:
-    input_buffer->depth--;
+    input_buffer->depth--;/* 退出对象，深度 -1 */
 
     if (head != NULL) {
-        head->prev = current_item;
+        head->prev = current_item;/* 形成双向链表 */
     }
 
-    item->type = cJSON_Object;
-    item->child = head;
+    item->type = cJSON_Object;/* 设置节点类型 */
+    item->child = head;/* 把链表挂到 item 上 */
 
-    input_buffer->offset++;
+    input_buffer->offset++;/* 跳过 '}' */
     return true;
-
+/*--------------------------------------------------------------
+ * 7. 失败处理：清理已分配的节点
+ *--------------------------------------------------------------*/
 fail:
     if (head != NULL)
     {
