@@ -856,6 +856,23 @@ fail:
 }
 
 /* Parse the input text into an unescaped cinput, and populate item. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * parse_string：解析 JSON 字符串
+ *
+ * 我的理解：
+ *   1. 检查开头是不是 '"'
+ *   2. 遍历字符串，直到遇到结束的 '"'
+ *   3. 遇到 '\' 时，处理转义字符：
+ *      - \" \\ \/ \b \f \n \r \t
+ *      - \uXXXX（Unicode）
+ *   4. 动态分配内存存解析后的字符串
+ *   5. 把结果放到 item->valuestring
+ *
+ * 难点：
+ *   - 转义字符的处理
+ *   - Unicode 解码
+ *   - 内存分配和错误处理
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool parse_string(cJSON * const item, parse_buffer * const input_buffer)
 {
     const unsigned char *input_pointer = buffer_at_offset(input_buffer) + 1;
@@ -1532,32 +1549,51 @@ static cJSON_bool print_value(const cJSON * const item, printbuffer * const outp
 }
 
 /* Build an array from input text. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * parse_array：解析 JSON 数组 []
+ *
+ * 参数：
+ *   item         ：当前正在构建的数组节点
+ *   input_buffer ：解析进度条（记录读到哪了）
+ *
+ * 返回：解析成功返回 true，失败返回 false
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool parse_array(cJSON * const item, parse_buffer * const input_buffer)
 {
     cJSON *head = NULL; /* head of the linked list */
-    cJSON *current_item = NULL;
-
+    /* 链表头节点（第一个元素） */
+    cJSON *current_item = NULL; /* 当前正在处理的节点 */
+    /*--------------------------------------------------------------
+     * 1. 深度检查：防止 JSON 嵌套太深导致栈溢出
+     *--------------------------------------------------------------*/
     if (input_buffer->depth >= CJSON_NESTING_LIMIT)
     {
         return false; /* to deeply nested */
+        /* 嵌套太深，解析失败 */
     }
-    input_buffer->depth++;
-
+    input_buffer->depth++;/* 进入一层，深度 +1 */
+    /*--------------------------------------------------------------
+     * 2. 检查第一个字符是不是 '['
+     *--------------------------------------------------------------*/
     if (buffer_at_offset(input_buffer)[0] != '[')
     {
         /* not an array */
-        goto fail;
+        goto fail;/* 不是数组，跳转到失败处理 */
     }
 
     input_buffer->offset++;
     buffer_skip_whitespace(input_buffer);
+    /*--------------------------------------------------------------
+     * 3. 处理空数组 [] 的情况
+     *--------------------------------------------------------------*/
     if (can_access_at_index(input_buffer, 0) && (buffer_at_offset(input_buffer)[0] == ']'))
     {
         /* empty array */
-        goto success;
+        goto success;/* 空数组，直接成功 */
     }
 
     /* check if we skipped to the end of the buffer */
+    /* 检查是否已经读到末尾（不应该发生） */
     if (cannot_access_at_index(input_buffer, 0))
     {
         input_buffer->offset--;
@@ -1565,11 +1601,16 @@ static cJSON_bool parse_array(cJSON * const item, parse_buffer * const input_buf
     }
 
     /* step back to character in front of the first element */
+    /* 回退一个字符，准备开始循环解析元素 */
     input_buffer->offset--;
     /* loop through the comma separated array elements */
+    /*--------------------------------------------------------------
+     * 4. 循环解析数组元素（直到遇到 ']'）
+     *--------------------------------------------------------------*/
     do
     {
         /* allocate next item */
+        /* 4.1 创建一个新节点 */
         cJSON *new_item = cJSON_New_Item(&(input_buffer->hooks));
         if (new_item == NULL)
         {
@@ -1577,20 +1618,24 @@ static cJSON_bool parse_array(cJSON * const item, parse_buffer * const input_buf
         }
 
         /* attach next item to list */
+         /* 4.2 把新节点挂到链表上 */
         if (head == NULL)
         {
             /* start the linked list */
+            /* 第一个元素：作为链表头 */
             current_item = head = new_item;
         }
         else
         {
             /* add to the end and advance */
+            /* 后续元素：加到链表末尾 */
             current_item->next = new_item;
             new_item->prev = current_item;
             current_item = new_item;
         }
 
         /* parse next value */
+         /* 4.3 解析下一个值 */
         input_buffer->offset++;
         buffer_skip_whitespace(input_buffer);
         if (!parse_value(current_item, input_buffer))
@@ -1598,14 +1643,19 @@ static cJSON_bool parse_array(cJSON * const item, parse_buffer * const input_buf
             goto fail; /* failed to parse value */
         }
         buffer_skip_whitespace(input_buffer);
+        /* 4.4 检查后面是逗号还是 ']' */
     }
     while (can_access_at_index(input_buffer, 0) && (buffer_at_offset(input_buffer)[0] == ','));
-
+    /*--------------------------------------------------------------
+     * 5. 检查最后是不是 ']'
+     *--------------------------------------------------------------*/
     if (cannot_access_at_index(input_buffer, 0) || buffer_at_offset(input_buffer)[0] != ']')
     {
         goto fail; /* expected end of array */
     }
-
+/*--------------------------------------------------------------
+ * 6. 成功处理
+ *--------------------------------------------------------------*/
 success:
     input_buffer->depth--;
 
@@ -1619,7 +1669,9 @@ success:
     input_buffer->offset++;
 
     return true;
-
+/*--------------------------------------------------------------
+ * 7. 失败处理：清理已分配的节点
+ *--------------------------------------------------------------*/
 fail:
     if (head != NULL)
     {
