@@ -2601,6 +2601,21 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateBool(cJSON_bool boolean)
     return item;
 }
 
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateNumber：创建一个数字节点
+ * 
+ * 我的理解：
+ *   1. 分配内存
+ *   2. type 设成 cJSON_Number
+ *   3. valuedouble 存浮点值
+ *   4. valueint 存整数部分，但要处理边界情况：
+ *      - 如果数字太大超过 INT_MAX，就取 INT_MAX
+ *      - 如果太小小于 INT_MIN，就取 INT_MIN
+ *      - 否则直接转 int
+ * 
+ * 参数 num：要存的数字
+ * 返回：数字节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateNumber(double num)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2626,7 +2641,18 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateNumber(double num)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateString：创建一个字符串节点
+ * 
+ * 我的理解：
+ *   1. 分配内存
+ *   2. type 设成 cJSON_String
+ *   3. 用 cJSON_strdup 拷贝输入的字符串到 valuestring
+ *   4. 如果拷贝失败，就删除节点返回 NULL
+ * 
+ * 参数 string：要存的字符串
+ * 返回：字符串节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateString(const char *string)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2643,7 +2669,19 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateString(const char *string)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateStringReference：创建一个字符串引用节点
+ * 
+ * 我的理解：
+ *   和普通字符串节点的区别：
+ *     - type 多了 cJSON_IsReference 标记
+ *     - 不拷贝字符串，直接用原指针（cast_away_const 去掉 const）
+ * 
+ *   这种节点不拥有字符串，只是引用，释放时不会 free 这个字符串。
+ * 
+ * 参数 string：要引用的字符串
+ * 返回：引用节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateStringReference(const char *string)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2655,7 +2693,19 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateStringReference(const char *string)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateObjectReference：创建一个对象引用节点
+ * 
+ * 我的理解：
+ *   1. 分配内存
+ *   2. type = cJSON_Object | cJSON_IsReference
+ *   3. child 直接指向被引用的对象（不拷贝）
+ * 
+ *   这个节点只是“指向”另一个对象，不是真正拥有它。
+ * 
+ * 参数 child：要被引用的对象节点
+ * 返回：引用节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateObjectReference(const cJSON *child)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2666,7 +2716,16 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateObjectReference(const cJSON *child)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateArrayReference：创建一个数组引用节点
+ * 
+ * 我的理解：
+ *   和对象引用一样，只是 type 是 cJSON_Array | cJSON_IsReference
+ *   child 指向被引用的数组
+ * 
+ * 参数 child：要被引用的数组节点
+ * 返回：引用节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateArrayReference(const cJSON *child) {
     cJSON *item = cJSON_New_Item(&global_hooks);
     if (item != NULL) {
@@ -2676,7 +2735,16 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateArrayReference(const cJSON *child) {
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateRaw：创建一个原始 JSON 字符串节点
+ * 
+ * 我的理解：
+ *   和 CreateString 几乎一样，只是 type 是 cJSON_Raw
+ *   这种节点存的是已经格式好的 JSON 字符串，解析时不会再去解析它
+ * 
+ * 参数 raw：原始 JSON 字符串
+ * 返回：raw 节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateRaw(const char *raw)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
@@ -2693,7 +2761,18 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateRaw(const char *raw)
 
     return item;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateArray：创建一个空数组节点
+ * 
+ * 我的理解：
+ *   1. 分配内存
+ *   2. type 设成 cJSON_Array
+ *   3. child 是 NULL（还没有元素）
+ * 
+ *   后续要用 AddItemToArray 往里面加元素。
+ * 
+ * 返回：空数组节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateArray(void)
 {
     cJSON *item = cJSON_New_Item(&global_hooks);
