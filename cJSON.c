@@ -2807,6 +2807,22 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateObject (void)
 }
 
 /* Create Arrays: */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateIntArray：从 int 数组创建 JSON 数字数组
+ *
+ * 我的理解：
+ *   1. 先创建一个空数组
+ *   2. 遍历传入的 int 数组，每个元素转成 cJSON_Number 节点
+ *   3. 用 suffix_object 把节点串成链表
+ *   4. 第一个节点挂在 a->child，后续节点依次用 next 连接
+ *   5. 最后把最后一个节点赋值给 a->child->prev（形成双向链表）
+ *
+ * 参数：
+ *   numbers：int 数组指针
+ *   count  ：数组长度
+ *
+ * 返回：创建好的 JSON 数组，如果参数非法或内存不足返回 NULL
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateIntArray(const int *numbers, int count)
 {
     size_t i = 0;
@@ -2846,7 +2862,13 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateIntArray(const int *numbers, int count)
 
     return a;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateFloatArray：从 float 数组创建 JSON 数字数组
+ *
+ * 我的理解：
+ *   和 CreateIntArray 一样，只是把 float 强转成 double 再存
+ *   （因为 cJSON 内部数字统一用 double 存）
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateFloatArray(const float *numbers, int count)
 {
     size_t i = 0;
@@ -2886,7 +2908,12 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateFloatArray(const float *numbers, int count)
 
     return a;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateDoubleArray：从 double 数组创建 JSON 数字数组
+ *
+ * 我的理解：
+ *   和 CreateIntArray 完全一样，只是输入是 double 类型
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateDoubleArray(const double *numbers, int count)
 {
     size_t i = 0;
@@ -2926,7 +2953,19 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateDoubleArray(const double *numbers, int count)
 
     return a;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_CreateStringArray：从字符串数组创建 JSON 字符串数组
+ *
+ * 我的理解：
+ *   1. 先创建空数组
+ *   2. 遍历每个字符串，用 cJSON_CreateString 创建节点
+ *   3. 用 suffix_object 连成链表
+ *   4. 最后设置双向链表的 prev 指针
+ *
+ * 注意：
+ *   - 传入的是 const char* 数组，每个字符串会被拷贝一份
+ *   - 原字符串释放不影响 JSON
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_CreateStringArray(const char *const *strings, int count)
 {
     size_t i = 0;
