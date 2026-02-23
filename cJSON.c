@@ -2769,7 +2769,24 @@ CJSON_PUBLIC(cJSON *) cJSON_DetachItemViaPointer(cJSON *parent, cJSON * const it
 
     return item;
 }
-
+/*------------------------------------------------------------------------------------------------
+ * cJSON_DetachItemFromArray：从数组中移除指定位置的元素（不删除）
+ *
+ * 我的理解：
+ *   这个函数按索引找到数组元素，然后把它从链表中摘下来，
+ *   但不释放内存，返回给调用者自己处理。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 参数：
+ *   array ：要操作的数组
+ *   which ：要移除的元素位置（从0开始）
+ *
+ * 实现逻辑：
+ *   1. 如果索引 < 0，直接返回 NULL
+ *   2. 调用 get_array_item 找到该位置的节点
+ *   3. 调用 cJSON_DetachItemViaPointer 做真正的链表移除
+ *   4. 返回被移除的节点
+ *------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_DetachItemFromArray(cJSON *array, int which)
 {
     if (which < 0)
@@ -3439,13 +3456,46 @@ CJSON_PUBLIC(cJSON *) cJSON_CreateStringArray(const char *const *strings, int co
 }
 
 /* Duplication */
-cJSON * cJSON_Duplicate_rec(const cJSON *item, size_t depth, cJSON_bool recurse);
-
+/*------------------------------------------------------------------------------------------------
+ * cJSON_Duplicate：深拷贝整个 cJSON 树（带深度检查版本）
+ *
+ * 我的整体理解：
+ *   这个函数递归复制整个节点树，生成一份完全独立的新树。
+ *   比简单版多了 depth 参数，用来防止循环引用导致栈溢出。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 参数：
+ *   item    ：要复制的节点
+ *   recurse ：是否递归复制子节点
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 实现逻辑：
+ *   1. 创建新节点，复制类型和数据
+ *   2. 复制字符串（valuestring/string）
+ *   3. 如果 recurse 为 true，遍历 child 链表，递归复制每个子节点
+ *   4. 复制过程中记录深度 depth，超过限制则失败（防止循环引用）
+ *   5. 递归复制 next 兄弟节点
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 深度检查的作用：
+ *   - 防止恶意构造的循环引用导致无限递归
+ *   - CJSON_CIRCULAR_LIMIT 是安全阈值（默认 200）
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(cJSON *) cJSON_Duplicate(const cJSON *item, cJSON_bool recurse)
 {
-    return cJSON_Duplicate_rec(item, 0, recurse );
+    return cJSON_Duplicate_rec(item, 0, recurse );  // 从深度 0 开始
 }
 
+/*------------------------------------------------------------------------------------------------
+ * cJSON_Duplicate_rec：深拷贝的递归实现
+ *
+ * 参数：
+ *   item    ：要复制的节点
+ *   depth   ：当前深度（防止循环引用）
+ *   recurse ：是否递归复制子节点
+ *------------------------------------------------------------------------------------------------
+ */
 cJSON * cJSON_Duplicate_rec(const cJSON *item, size_t depth, cJSON_bool recurse)
 {
     cJSON *newitem = NULL;
@@ -3454,20 +3504,27 @@ cJSON * cJSON_Duplicate_rec(const cJSON *item, size_t depth, cJSON_bool recurse)
     cJSON *newchild = NULL;
 
     /* Bail on bad ptr */
+    /* 检查输入是否有效 */
     if (!item)
     {
         goto fail;
     }
+
     /* Create new item */
+    /* 创建新节点 */
     newitem = cJSON_New_Item(&global_hooks);
     if (!newitem)
     {
         goto fail;
     }
+
     /* Copy over all vars */
+    /* 复制类型（去掉 IsReference 标记）和数据 */
     newitem->type = item->type & (~cJSON_IsReference);
     newitem->valueint = item->valueint;
     newitem->valuedouble = item->valuedouble;
+
+    /* 复制 valuestring（字符串值） */
     if (item->valuestring)
     {
         newitem->valuestring = (char*)cJSON_strdup((unsigned char*)item->valuestring, &global_hooks);
@@ -3476,46 +3533,61 @@ cJSON * cJSON_Duplicate_rec(const cJSON *item, size_t depth, cJSON_bool recurse)
             goto fail;
         }
     }
+
+    /* 复制 string（键名） */
     if (item->string)
     {
+        /* 如果是常量字符串，直接引用；否则拷贝一份 */
         newitem->string = (item->type&cJSON_StringIsConst) ? item->string : (char*)cJSON_strdup((unsigned char*)item->string, &global_hooks);
         if (!newitem->string)
         {
             goto fail;
         }
     }
+
     /* If non-recursive, then we're done! */
+    /* 如果不递归，直接返回（浅拷贝） */
     if (!recurse)
     {
         return newitem;
     }
+
     /* Walk the ->next chain for the child. */
+    /* 遍历子节点链表，递归复制每个子节点 */
     child = item->child;
     while (child != NULL)
     {
+        /* 深度检查：防止循环引用导致无限递归 */
         if(depth >= CJSON_CIRCULAR_LIMIT) {
             goto fail;
         }
-        newchild = cJSON_Duplicate_rec(child, depth + 1, true); /* Duplicate (with recurse) each item in the ->next chain */
+
+        /* 递归复制子节点（深度 +1） */
+        newchild = cJSON_Duplicate_rec(child, depth + 1, true);
         if (!newchild)
         {
             goto fail;
         }
+
+        /* 把复制出的子节点挂到新节点的 child 链表上 */
         if (next != NULL)
         {
-            /* If newitem->child already set, then crosswire ->prev and ->next and move on */
+            /* 不是第一个子节点，挂到链表末尾 */
             next->next = newchild;
             newchild->prev = next;
             next = newchild;
         }
         else
         {
-            /* Set newitem->child and move to it */
+            /* 第一个子节点，设置 newitem->child */
             newitem->child = newchild;
             next = newchild;
         }
-        child = child->next;
+
+        child = child->next;  // 继续下一个子节点
     }
+
+    /* 设置双向链表的 prev 指针 */
     if (newitem && newitem->child)
     {
         newitem->child->prev = newchild;
@@ -3523,10 +3595,14 @@ cJSON * cJSON_Duplicate_rec(const cJSON *item, size_t depth, cJSON_bool recurse)
 
     return newitem;
 
+/*------------------------------------------------------------------------------------------------
+ * 失败处理：清理已分配的节点，返回 NULL
+ *------------------------------------------------------------------------------------------------
+ */
 fail:
     if (newitem != NULL)
     {
-        cJSON_Delete(newitem);
+        cJSON_Delete(newitem);  // 递归删除已创建的节点
     }
 
     return NULL;
