@@ -1059,6 +1059,36 @@ fail:
 }
 
 /* Render the cstring provided to an escaped version that can be printed. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * print_string_ptr：把 C 字符串转成带转义的 JSON 字符串
+ *
+ * 我的整体理解：
+ *   这个函数负责给字符串加上双引号，并把需要转义的字符替换成 \x 形式。
+ *   比如：Hello "World" → "Hello \"World\""
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 处理流程：
+ *   1. 处理空字符串（直接返回 ""）
+ *
+ *   2. 第一遍遍历：计算需要多少转义字符
+ *      - "、\、\b、\f、\n、\r、\t → 每个占 2 个字符（如 \"）
+ *      - 控制字符（<32）→ 每个占 6 个字符（\uXXXX）
+ *
+ *   3. 用 ensure 分配足够空间（原长度 + 转义字符数 + 2个引号）
+ *
+ *   4. 第二遍遍历：实际写入
+ *      - 先写开头引号
+ *      - 遇到普通字符直接复制
+ *      - 遇到需要转义的字符：
+ *        * 先写一个 '\'
+ *        * 再写对应的转义符（"、\、b、f、n、r、t）
+ *        * 控制字符写 \uXXXX
+ *      - 最后写结尾引号和 '\0'
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 和 parse_string 的关系：
+ *   parse_string 是去掉转义，print_string_ptr 是加上转义，正好相反。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool print_string_ptr(const unsigned char * const input, printbuffer * const output_buffer)
 {
     const unsigned char *input_pointer = NULL;
@@ -1181,6 +1211,19 @@ static cJSON_bool print_string_ptr(const unsigned char * const input, printbuffe
 }
 
 /* Invoke print_string_ptr (which is useful) on an item. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * print_string：打印 cJSON 字符串节点
+ *
+ * 我的理解：
+ *   这个函数只是 print_string_ptr 的一个包装，
+ *   取出节点里的 valuestring 交给 print_string_ptr 处理。
+ *
+ * 参数：
+ *   item：要打印的字符串节点
+ *   p   ：输出缓冲区
+ *
+ * 返回：成功 true，失败 false
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool print_string(const cJSON * const item, printbuffer * const p)
 {
     return print_string_ptr((unsigned char*)item->valuestring, p);
@@ -1777,6 +1820,28 @@ fail:
 }
 
 /* Render an array to text */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * print_array：把 cJSON 数组节点打印成 JSON 字符串
+ *
+ * 我的整体理解：
+ *   这个函数负责把数组节点转成 [元素1, 元素2, ...] 的形式。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 处理流程：
+ *   1. 先输出 '['
+ *
+ *   2. 遍历数组的 child 链表：
+ *      - 对每个元素调用 print_value（递归）
+ *      - 如果不是第一个元素，先加 ','
+ *      - 把 print_value 的结果追加到输出缓冲区
+ *
+ *   3. 最后输出 ']'
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 和 parse_array 的关系：
+ *   parse_array 是解析 [ ... ] 成链表，
+ *   print_array 是把链表打印成 [ ... ]，正好相反。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool print_array(const cJSON * const item, printbuffer * const output_buffer)
 {
     unsigned char *output_pointer = NULL;
@@ -1998,11 +2063,35 @@ fail:
 }
 
 /* Render an object to text. */
+/*------------------------------------------------------------------------------------------------
+ * print_object：把 cJSON 对象节点打印成 JSON 字符串
+ *
+ * 我的整体理解：
+ *   这个函数负责把对象节点转成 {"键1":值1, "键2":值2, ...} 的形式。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 处理流程：
+ *   1. 先输出 '{'
+ *
+ *   2. 遍历对象的 child 链表：
+ *      - 如果不是第一个键值对，先加 ','
+ *      - 调用 print_string_ptr 打印键名（加引号、转义）
+ *      - 加 ':'
+ *      - 调用 print_value 打印值（递归）
+ *
+ *   3. 最后输出 '}'
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 和 parse_object 的关系：
+ *   parse_object 是解析 { ... } 成链表，
+ *   print_object 是把链表打印成 { ... }，正好相反。
+ *------------------------------------------------------------------------------------------------
+ */
 static cJSON_bool print_object(const cJSON * const item, printbuffer * const output_buffer)
 {
     unsigned char *output_pointer = NULL;
     size_t length = 0;
-    cJSON *current_item = item->child;
+    cJSON *current_item = item->child;  // 指向第一个键值对
 
     if (output_buffer == NULL)
     {
@@ -2010,6 +2099,7 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
     }
 
     /* Compose the output: */
+    /* 根据是否格式化，决定开头是 '{' 还是 '{\n' */
     length = (size_t) (output_buffer->format ? 2 : 1); /* fmt: {\n */
     output_pointer = ensure(output_buffer, length + 1);
     if (output_pointer == NULL)
@@ -2017,16 +2107,18 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
         return false;
     }
 
-    *output_pointer++ = '{';
-    output_buffer->depth++;
+    *output_pointer++ = '{';           // 写入 '{'
+    output_buffer->depth++;             // 进入一层，深度 +1（用于缩进）
     if (output_buffer->format)
     {
-        *output_pointer++ = '\n';
+        *output_pointer++ = '\n';       // 格式化模式：换行
     }
-    output_buffer->offset += length;
+    output_buffer->offset += length;     // 更新已写入长度
 
+    /* 遍历所有键值对 */
     while (current_item)
     {
+        /* 格式化模式：先缩进 */
         if (output_buffer->format)
         {
             size_t i;
@@ -2037,32 +2129,35 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
             }
             for (i = 0; i < output_buffer->depth; i++)
             {
-                *output_pointer++ = '\t';
+                *output_pointer++ = '\t';  // 每层缩进一个制表符
             }
             output_buffer->offset += output_buffer->depth;
         }
 
         /* print key */
+        /* 打印键名（调用 print_string_ptr 处理转义和引号） */
         if (!print_string_ptr((unsigned char*)current_item->string, output_buffer))
         {
             return false;
         }
         update_offset(output_buffer);
 
+        /* 打印冒号和可能的缩进 */
         length = (size_t) (output_buffer->format ? 2 : 1);
         output_pointer = ensure(output_buffer, length);
         if (output_pointer == NULL)
         {
             return false;
         }
-        *output_pointer++ = ':';
+        *output_pointer++ = ':';        // 写入 ':'
         if (output_buffer->format)
         {
-            *output_pointer++ = '\t';
+            *output_pointer++ = '\t';   // 格式化模式：冒号后加制表符
         }
         output_buffer->offset += length;
 
         /* print value */
+        /* 打印值（递归调用 print_value） */
         if (!print_value(current_item, output_buffer))
         {
             return false;
@@ -2070,6 +2165,7 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
         update_offset(output_buffer);
 
         /* print comma if not last */
+        /* 如果不是最后一个键值对，打印逗号 */
         length = ((size_t)(output_buffer->format ? 1 : 0) + (size_t)(current_item->next ? 1 : 0));
         output_pointer = ensure(output_buffer, length + 1);
         if (output_pointer == NULL)
@@ -2078,19 +2174,20 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
         }
         if (current_item->next)
         {
-            *output_pointer++ = ',';
+            *output_pointer++ = ',';    // 有下一个节点才加逗号
         }
 
         if (output_buffer->format)
         {
-            *output_pointer++ = '\n';
+            *output_pointer++ = '\n';   // 格式化模式：换行
         }
         *output_pointer = '\0';
         output_buffer->offset += length;
 
-        current_item = current_item->next;
+        current_item = current_item->next;  // 移动到下一个键值对
     }
 
+    /* 打印结尾的 '}'，并处理缩进 */
     output_pointer = ensure(output_buffer, output_buffer->format ? (output_buffer->depth + 1) : 2);
     if (output_pointer == NULL)
     {
@@ -2099,14 +2196,14 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
     if (output_buffer->format)
     {
         size_t i;
-        for (i = 0; i < (output_buffer->depth - 1); i++)
+        for (i = 0; i < (output_buffer->depth - 1); i++)  // 退回一层缩进
         {
             *output_pointer++ = '\t';
         }
     }
-    *output_pointer++ = '}';
+    *output_pointer++ = '}';            // 写入 '}'
     *output_pointer = '\0';
-    output_buffer->depth--;
+    output_buffer->depth--;              // 退出对象，深度 -1
 
     return true;
 }
