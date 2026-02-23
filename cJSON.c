@@ -2256,7 +2256,23 @@ CJSON_PUBLIC(int) cJSON_GetArraySize(const cJSON *array)
 
     return (int)size;
 }
-
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * get_array_item：按索引从数组中获取元素（内部函数）
+ *
+ * 我的理解：
+ *   这是 cJSON_GetArrayItem 的底层实现，负责真正的遍历查找。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 参数：
+ *   array ：要查找的数组
+ *   index ：要获取的元素位置（从0开始）
+ *
+ * 实现逻辑：
+ *   1. 从 array->child 开始（第一个元素）
+ *   2. 循环 index 次，每次往后走一个（current = current->next）
+ *   3. 如果还没走到 index 就遇到 NULL，说明索引越界
+ *   4. 返回第 index 个元素（可能是 NULL）
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON* get_array_item(const cJSON *array, size_t index)
 {
     cJSON *current_child = NULL;
@@ -2275,7 +2291,21 @@ static cJSON* get_array_item(const cJSON *array, size_t index)
 
     return current_child;
 }
-
+/*------------------------------------------------------------------------------------------------
+ * cJSON_GetArrayItem：按索引从数组中获取元素（对外接口）
+ *
+ * 我的理解：
+ *   这是一个包装函数，主要做两件事：
+ *     1. 处理负数索引（直接返回 NULL）
+ *     2. 调用内部函数 get_array_item 真正干活
+ *
+ * 参数：
+ *   array ：要查找的数组
+ *   index ：要获取的元素位置（从0开始，负数返回 NULL）
+ *
+ * 返回：
+ *   第 index 个元素节点，如果越界或出错返回 NULL
+ *------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(cJSON *) cJSON_GetArrayItem(const cJSON *array, int index)
 {
     if (index < 0)
@@ -2285,36 +2315,71 @@ CJSON_PUBLIC(cJSON *) cJSON_GetArrayItem(const cJSON *array, int index)
 
     return get_array_item(array, (size_t)index);
 }
-
+/*------------------------------------------------------------------------------------------------
+ * get_object_item：从对象中查找指定键名的子节点（内部函数）
+ *
+ * 我的理解：
+ *   这是 cJSON_GetObjectItem 和 cJSON_GetObjectItemCaseSensitive 的底层实现。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 参数：
+ *   object         ：要查找的对象
+ *   name           ：要查找的键名
+ *   case_sensitive ：是否区分大小写
+ *                    true  → 用 strcmp 精确匹配
+ *                    false → 用 case_insensitive_strcmp 忽略大小写
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 实现逻辑：
+ *   1. 从 object->child 开始遍历链表
+ *   2. 根据 case_sensitive 选择比较函数
+ *   3. 一直往后找，直到找到匹配的节点或遍历完
+ *   4. 找到就返回节点，没找到返回 NULL
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 为什么这么写：
+ *   两个对外函数（区分/不区分大小写）共用同一套遍历逻辑，
+ *   只差在比较函数上，避免重复代码。
+ *------------------------------------------------------------------------------------------------
+ */
 static cJSON *get_object_item(const cJSON * const object, const char * const name, const cJSON_bool case_sensitive)
 {
     cJSON *current_element = NULL;
 
+    /* 检查参数有效性 */
     if ((object == NULL) || (name == NULL))
     {
         return NULL;
     }
 
+    /* 从第一个子节点开始遍历 */
     current_element = object->child;
+
+    /* 根据是否区分大小写，选择不同的比较方式 */
     if (case_sensitive)
     {
+        /* 区分大小写：用 strcmp 精确比较 */
+        /* 循环条件：当前节点不为空，且键名不为空，且键名不等于目标 */
         while ((current_element != NULL) && (current_element->string != NULL) && (strcmp(name, current_element->string) != 0))
         {
-            current_element = current_element->next;
+            current_element = current_element->next;  /* 继续找下一个 */
         }
     }
     else
     {
+        /* 不区分大小写：用 case_insensitive_strcmp 忽略大小写比较 */
         while ((current_element != NULL) && (case_insensitive_strcmp((const unsigned char*)name, (const unsigned char*)(current_element->string)) != 0))
         {
-            current_element = current_element->next;
+            current_element = current_element->next;  /* 继续找下一个 */
         }
     }
 
+    /* 如果没找到，或者找到的节点键名为空，返回 NULL */
     if ((current_element == NULL) || (current_element->string == NULL)) {
         return NULL;
     }
 
+    /* 找到匹配的节点，返回它 */
     return current_element;
 }
 
