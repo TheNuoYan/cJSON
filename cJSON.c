@@ -1435,10 +1435,31 @@ CJSON_PUBLIC(cJSON_bool) cJSON_PrintPreallocated(cJSON *item, char *buffer, cons
 }
 
 /* Parser core - when encountering text, process appropriately. */
-static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buffer)
 /*-------------------------------------------------------------------------------------------------------------------------------
-我的解读：parse_value函数，返回值为cJSON_bool类型（根据前文可知其本质为int类型）
--------------------------------------------------------------------------------------------------------------------------------*/
+ * parse_value：解析任意 JSON 值（解析器总入口）
+ *
+ * 我的理解：
+ *   这个函数是整个解析器的“交通警察”，
+ *   看一眼当前字符就知道该叫谁来干活：
+ *
+ *   -------------------------------------------------
+ *   看到 "null"  → 直接设 type = cJSON_NULL，移动 offset
+ *   看到 "false" → 直接设 type = cJSON_False，移动 offset
+ *   看到 "true"  → 直接设 type = cJSON_True，移动 offset
+ *   看到 '"'     → 交给 parse_string（字符串）
+ *   看到数字或'-'→ 交给 parse_number（数字） *   看到 '['     → 交给 parse_array（数组）
+ *   看到 '{'     → 交给 parse_object（对象）
+ *   -------------------------------------------------
+ *
+ *   每解析完一个值，buffer 的 offset 就会往前移动，
+ *   这样下一个函数就知道从哪继续读。
+ *
+ * 返回值：
+ *   true  - 解析成功，item 被填好，buffer 移到下一个位置
+ *   false - 解析失败（格式错误或内存不足）
+ *-----------------------------------------------------------------------------------------------------------------------------*/
+static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buffer)
+
 {
     if ((input_buffer == NULL) || (input_buffer->content == NULL))
     {
@@ -1493,6 +1514,24 @@ static cJSON_bool parse_value(cJSON * const item, parse_buffer * const input_buf
 }
 
 /* Render a value to text. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * print_value：打印任意 cJSON 节点（打印器入口）
+ *
+ * 我的理解：
+ *   根据节点的 type，决定怎么输出：
+ *   -------------------------------------------------
+ *   - cJSON_NULL   → 直接输出 "null"
+ *   - cJSON_False  → 直接输出 "false"
+ *   - cJSON_True   → 直接输出 "true"
+ *   - cJSON_Number → 调用 print_number
+ *   - cJSON_String → 调用 print_string
+ *   - cJSON_Array  → 调用 print_array
+ *   - cJSON_Object → 调用 print_object
+ *   - cJSON_Raw    → 直接输出原始字符串
+ *   -------------------------------------------------
+ *
+ * 每次输出前用 ensure 检查缓冲区空间，不够就扩容。
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool print_value(const cJSON * const item, printbuffer * const output_buffer)
 {
     unsigned char *output = NULL;
