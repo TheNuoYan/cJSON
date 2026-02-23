@@ -2234,6 +2234,29 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
 }
 
 /* Get Array size/item / object item. */
+/*------------------------------------------------------------------------------------------------
+ * cJSON_GetArraySize：获取数组的元素个数
+ *
+ * 我的理解：
+ *   这个函数遍历数组的 child 链表，数一数有多少个节点。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 实现逻辑：
+ *   1. 从 array->child 开始（第一个元素）
+ *   2. while 循环遍历链表，每走一个节点计数器 +1
+ *   3. 直到 next 为 NULL，返回计数器
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 时间复杂度：O(n)
+ *   - JSON 数组是链表，不知道长度，必须遍历才能知道有几个元素
+ *   - 如果需要频繁获取长度，可以自己缓存，但 cJSON 本身不缓存
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 注意事项：
+ *   - 如果传入 NULL 或空数组，返回 0
+ *   - 每次调用都会遍历整个数组，大量调用时要注意性能
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(int) cJSON_GetArraySize(const cJSON *array)
 {
     cJSON *child = NULL;
@@ -2762,25 +2785,46 @@ CJSON_PUBLIC(void) cJSON_DeleteItemFromArray(cJSON *array, int which)
     cJSON_Delete(cJSON_DetachItemFromArray(array, which));
 }
 
+/*------------------------------------------------------------------------------------------------
+ * cJSON_DetachItemFromObject：从对象中移除节点（包装函数）
+ *
+ * 我的理解：
+ *   这是一个方便用户的包装，先找到节点，再调用真正的 Detach 函数。
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(cJSON *) cJSON_DetachItemFromObject(cJSON *object, const char *string)
 {
-    cJSON *to_detach = cJSON_GetObjectItem(object, string);
-
-    return cJSON_DetachItemViaPointer(object, to_detach);
+    cJSON *to_detach = cJSON_GetObjectItem(object, string);  // 先找到节点
+    return cJSON_DetachItemViaPointer(object, to_detach);     // 再调用真正干活函数
 }
 
+/*------------------------------------------------------------------------------------------------
+ * cJSON_DetachItemFromObjectCaseSensitive：区分大小写版本
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(cJSON *) cJSON_DetachItemFromObjectCaseSensitive(cJSON *object, const char *string)
 {
     cJSON *to_detach = cJSON_GetObjectItemCaseSensitive(object, string);
-
     return cJSON_DetachItemViaPointer(object, to_detach);
 }
 
+/*------------------------------------------------------------------------------------------------
+ * cJSON_DeleteItemFromObject：从对象中移除并删除节点
+ *
+ * 我的理解：
+ *   Delete = Detach + Delete
+ *   先摘下来，再释放内存。
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(void) cJSON_DeleteItemFromObject(cJSON *object, const char *string)
 {
-    cJSON_Delete(cJSON_DetachItemFromObject(object, string));
+    cJSON_Delete(cJSON_DetachItemFromObject(object, string));  // Detach 后再 Delete
 }
 
+/*------------------------------------------------------------------------------------------------
+ * cJSON_DeleteItemFromObjectCaseSensitive：区分大小写版本
+ *------------------------------------------------------------------------------------------------
+ */
 CJSON_PUBLIC(void) cJSON_DeleteItemFromObjectCaseSensitive(cJSON *object, const char *string)
 {
     cJSON_Delete(cJSON_DetachItemFromObjectCaseSensitive(object, string));
