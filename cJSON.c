@@ -646,6 +646,35 @@ static cJSON_bool compare_double(double a, double b)
 }
 
 /* Render the number nicely from the given item into a string. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * print_number：把 cJSON 数字节点转换成 JSON 字符串
+ *
+ * 我的整体理解：
+ *   这个函数负责把 cJSON 节点里的数字（valuedouble）转成字符串，
+ *   然后写到输出缓冲区里。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 1. 处理特殊值
+ *    - NaN / Infinity → 转成 "null"（JSON 不支持这两个东西）
+ *
+ * 2. 判断是不是整数
+ *    - 如果浮点数和整数值相等（比如 20.0 和 20），直接打印整数，避免 "20.0"
+ *
+ * 3. 精度控制
+ *    - 先用 15 位小数打印（够短，避免多余的有效数字）
+ *    - 检查用这个字符串能否还原回原来的 double
+ *    - 还原失败就用 17 位小数（保证双精度不丢失）
+ *
+ * 4. 写入缓冲区
+ *    - 用 ensure 确保输出缓冲区够大
+ *    - 把本地化小数点（如 ','）替换回 JSON 标准 '.'
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 为什么这么设计：
+ *   - 保证精度不丢（double 转字符串再转回 double 要一样）
+ *   - 尽量短（15位 vs 17位）
+ *   - 兼容不同 locale（处理小数点）
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool print_number(const cJSON * const item, printbuffer * const output_buffer)
 {
     unsigned char *output_pointer = NULL;
@@ -662,10 +691,12 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
     }
 
     /* This checks for NaN and Infinity */
+    /* 处理 NaN 和 Infinity（JSON 不支持，转成 null） */
     if (isnan(d) || isinf(d))
     {
         length = sprintf((char*)number_buffer, "null");
     }
+    /* 如果浮点数和整数值相等（没有小数部分），直接打印整数 */
     else if(d == (double)item->valueint)
     {
         length = sprintf((char*)number_buffer, "%d", item->valueint);
@@ -673,23 +704,28 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
     else
     {
         /* Try 15 decimal places of precision to avoid nonsignificant nonzero digits */
+        /* 先用 15 位小数精度打印，避免多余的有效数字 */
         length = sprintf((char*)number_buffer, "%1.15g", d);
 
         /* Check whether the original double can be recovered */
+        /* 检查用这个字符串能否还原回原来的 double */
         if ((sscanf((char*)number_buffer, "%lg", &test) != 1) || !compare_double((double)test, d))
         {
             /* If not, print with 17 decimal places of precision */
+            /* 还原失败，改用 17 位小数精度（保证双精度不丢失） */
             length = sprintf((char*)number_buffer, "%1.17g", d);
         }
     }
 
     /* sprintf failed or buffer overrun occurred */
+    /* 检查 sprintf 是否出错或缓冲区溢出 */
     if ((length < 0) || (length > (int)(sizeof(number_buffer) - 1)))
     {
         return false;
     }
 
     /* reserve appropriate space in the output */
+    /* 在输出缓冲区中预留足够的空间 */
     output_pointer = ensure(output_buffer, (size_t)length + sizeof(""));
     if (output_pointer == NULL)
     {
@@ -698,6 +734,8 @@ static cJSON_bool print_number(const cJSON * const item, printbuffer * const out
 
     /* copy the printed number to the output and replace locale
      * dependent decimal point with '.' */
+    /* 把数字字符串复制到输出缓冲区，
+     * 同时把本地化的小数点（比如 ','）替换回 JSON 标准 '.' */
     for (i = 0; i < ((size_t)length); i++)
     {
         if (number_buffer[i] == decimal_point)
