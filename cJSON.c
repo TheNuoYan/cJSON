@@ -344,6 +344,24 @@ typedef struct
 #define buffer_at_offset(buffer) ((buffer)->content + (buffer)->offset)
 
 /* Parse the input text to generate a number, and populate the result into item. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * parse_number：解析 JSON 数字
+ *
+ * 我的理解：
+ *   把 JSON 里的数字字符串转成 C 的 double 和 int。
+ *
+ * 流程：
+ *   1. 处理负号（如果有）
+ *   2. 解析整数部分
+ *   3. 如果有小数点，解析小数部分
+ *   4. 如果有 e/E，解析指数部分
+ *   5. 用 strtod 转换成 double
+ *   6. 把结果存到 item->valuedouble 和 item->valueint
+ *
+ * 注意：
+ *   - 整数超出 INT_MAX 时，valueint 取 INT_MAX
+ *   - 浮点数精度问题
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 static cJSON_bool parse_number(cJSON * const item, parse_buffer * const input_buffer)
 {
     double number = 0;
