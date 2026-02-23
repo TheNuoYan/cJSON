@@ -277,27 +277,52 @@ static cJSON *cJSON_New_Item(const internal_hooks * const hooks)
 }
 
 /* Delete a cJSON structure. */
+/*-------------------------------------------------------------------------------------------------------------------------------
+ * cJSON_Delete：递归删除整个 cJSON 树
+ *
+ * 我的理解：
+ *   这个函数负责释放 cJSON 节点及其所有子节点，防止内存泄漏。
+ *
+ * ----------------------------------------------------------------------------------------------
+ * 删除顺序：
+ *   1. 先存下一个节点（next = item->next），因为 free 后就找不到了
+ *   2. 如果不是引用节点，递归删除子节点（child）
+ *   3. 如果不是引用节点，释放 valuestring（字符串数据）
+ *   4. 如果不是常量字符串，释放 string（键名）
+ *   5. 释放节点本身
+ *   6. 继续处理下一个节点
+ *-----------------------------------------------------------------------------------------------------------------------------*/
 CJSON_PUBLIC(void) cJSON_Delete(cJSON *item)
 {
     cJSON *next = NULL;
     while (item != NULL)
     {
-        next = item->next;
+        next = item->next;                     // 先存下一个节点，防止丢失
+
+        /* 如果不是引用节点，且还有子节点，递归删除子节点 */
         if (!(item->type & cJSON_IsReference) && (item->child != NULL))
         {
             cJSON_Delete(item->child);
         }
+
+        /* 如果不是引用节点，且 valuestring 存在，释放它 */
         if (!(item->type & cJSON_IsReference) && (item->valuestring != NULL))
         {
             global_hooks.deallocate(item->valuestring);
-            item->valuestring = NULL;
+            item->valuestring = NULL;           // 置 NULL 防止野指针
         }
+
+        /* 如果不是常量字符串，且 string 存在，释放它 */
         if (!(item->type & cJSON_StringIsConst) && (item->string != NULL))
         {
             global_hooks.deallocate(item->string);
-            item->string = NULL;
+            item->string = NULL;                 // 置 NULL 防止野指针
         }
+
+        /* 最后释放节点本身 */
         global_hooks.deallocate(item);
+
+        /* 继续处理下一个节点 */
         item = next;
     }
 }
@@ -2139,7 +2164,7 @@ static cJSON_bool print_object(const cJSON * const item, printbuffer * const out
         if (!print_string_ptr((unsigned char*)current_item->string, output_buffer))
         {
             return false;
-        }
+        }	`
         update_offset(output_buffer);
 
         /* 打印冒号和可能的缩进 */
